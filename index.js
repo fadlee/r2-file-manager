@@ -4,7 +4,20 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const path = require("path");
 const multer = require("multer");
-const { S3Client, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, CopyObjectCommand } = require("@aws-sdk/client-s3");
+const {
+    S3Client,
+    PutObjectCommand,
+    DeleteObjectCommand,
+    DeleteObjectsCommand,
+    GetObjectCommand,
+    HeadObjectCommand,
+    ListObjectsV2Command,
+    CopyObjectCommand,
+    CreateMultipartUploadCommand,
+    UploadPartCommand,
+    CompleteMultipartUploadCommand,
+    AbortMultipartUploadCommand
+} = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 dotenv.config();
@@ -12,6 +25,7 @@ dotenv.config();
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
+app.use(express.static(path.join(__dirname, "public")));
 
 const s3 = new S3Client({
     region: "auto",
@@ -25,6 +39,17 @@ const s3 = new S3Client({
 const upload = multer({ storage: multer.memoryStorage() });
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME;
+
+function buildObjectKey(folder, fileName) {
+    const safeFileName = String(fileName || "").replace(/^\/+/, "");
+    const safeFolder = String(folder || "").replace(/^\/+|\/+$/g, "");
+
+    if (!safeFileName) {
+        throw new Error("fileName is required");
+    }
+
+    return safeFolder ? `${safeFolder}/${safeFileName}` : safeFileName;
+}
 
 // Helper to convert S3 streams to strings
 const streamToString = async (stream) => {
@@ -362,7 +387,101 @@ app.post(
     }
 );
 
-// 10. Get URLs for files inside a folder or root
+// 10. Direct-to-R2 multipart upload endpoints
+app.post("/multipart-upload/create", async (req, res) => {
+    const { folder, fileName, contentType } = req.body;
+
+    try {
+        const key = buildObjectKey(folder, fileName);
+        const command = new CreateMultipartUploadCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+            ContentType: contentType || "application/octet-stream"
+        });
+        const result = await s3.send(command);
+
+        res.status(201).send({ key, uploadId: result.UploadId });
+    } catch (error) {
+        res.status(500).send({ error: error.message });
+    }
+});
+
+app.post("/multipart-upload/sign-part", async (req, res) => {
+    const { key, uploadId, partNumber, contentLength } = req.body;
+
+    if (!key || !uploadId || !partNumber) {
+        return res.status(400).send({ error: "key, uploadId, and partNumber are required" });
+    }
+
+    try {
+        const command = new UploadPartCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+            UploadId: uploadId,
+            PartNumber: Number(partNumber),
+            ContentLength: contentLength ? Number(contentLength) : undefined
+        });
+        const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
+
+        res.status(200).send({ url });
+    } catch (error) {
+        res.status(500).send({ error: error.message });
+    }
+});
+
+app.post("/multipart-upload/complete", async (req, res) => {
+    const { key, uploadId, parts } = req.body;
+
+    if (!key || !uploadId || !Array.isArray(parts) || parts.length === 0) {
+        return res.status(400).send({ error: "key, uploadId, and parts are required" });
+    }
+
+    try {
+        const normalizedParts = parts
+            .map((part) => ({
+                PartNumber: Number(part.PartNumber || part.partNumber),
+                ETag: part.ETag || part.etag
+            }))
+            .sort((a, b) => a.PartNumber - b.PartNumber);
+
+        const command = new CompleteMultipartUploadCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+            UploadId: uploadId,
+            MultipartUpload: {
+                Parts: normalizedParts
+            }
+        });
+        await s3.send(command);
+
+        res.status(200).send({ message: "Multipart upload completed successfully", key });
+    } catch (error) {
+        res.status(500).send({ error: error.message });
+    }
+});
+
+app.post("/multipart-upload/abort", async (req, res) => {
+    const { key, uploadId } = req.body;
+
+    if (!key || !uploadId) {
+        return res.status(400).send({ error: "key and uploadId are required" });
+    }
+
+    try {
+        const command = new AbortMultipartUploadCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+            UploadId: uploadId
+        });
+        await s3.send(command);
+
+        res.status(200).send({ message: "Multipart upload aborted" });
+    } catch (error) {
+        res.status(500).send({ error: error.message });
+    }
+});
+
+// 11. Get URLs for files inside a folder or root
 app.get("/get-file-urls", async (req, res) => {
     const { folder, expires } = req.query; // Accept `expires` as a query parameter
 
