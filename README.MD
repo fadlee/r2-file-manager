@@ -37,6 +37,16 @@
 - Batch operations for improved performance
 - CORS support for web applications
 
+## Screenshots
+
+### File browser
+
+![R2 File Manager file browser](docs/images/r2-file-manager-browser.png)
+
+### Upload progress
+
+![R2 File Manager multipart upload progress](docs/images/r2-file-manager-upload-progress.png)
+
 ## Prerequisites
 
 - Node.js (v14 or above)
