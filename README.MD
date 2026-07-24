@@ -57,20 +57,65 @@
     npm install
     ```
 
-3. **Create an .env file** in the root directory with the following content:
+3. **Get your Cloudflare R2 bucket name, endpoint, and API credentials.**
+
+    You need four values for the app:
+
+    | `.env` variable | Where to get it | Example |
+    | --- | --- | --- |
+    | `R2_BUCKET_NAME` / `R2_BUCKET` | Your R2 bucket name in Cloudflare Dashboard | `my-file-bucket` |
+    | `R2_ENDPOINT` | Your account-specific R2 S3 API endpoint | `https://<account-id>.r2.cloudflarestorage.com` |
+    | `AWS_ACCESS_KEY_ID` | R2 API token Access Key ID | `abc123...` |
+    | `AWS_SECRET_ACCESS_KEY` | R2 API token Secret Access Key | `secret...` |
+
+    To create the R2 API credentials:
+
+    1. Open the **Cloudflare Dashboard**.
+    2. Go to **Storage & databases** → **R2**.
+    3. Open **Manage R2 API Tokens**.
+    4. Create an API token for this bucket.
+    5. Grant permissions needed by this file manager:
+        - **Object Read** for listing and reading files.
+        - **Object Write** for creating, uploading, renaming, and multipart uploads.
+        - **Object Delete** for deleting files and aborting failed multipart uploads.
+    6. Copy the generated **Access Key ID** and **Secret Access Key** immediately. The secret is only shown once.
+
+    To find your Account ID:
+
+    1. Open the Cloudflare Dashboard.
+    2. Select your account.
+    3. Copy the **Account ID** from the account overview/sidebar.
+    4. Build the S3 API endpoint with this format:
+
+        ```txt
+        https://<account-id>.r2.cloudflarestorage.com
+        ```
+
+    Important: the S3 API endpoint is different from the public `r2.dev` URL. Use the S3 API endpoint for `R2_ENDPOINT`.
+
+    ```txt
+    ✅ R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+    ❌ R2_ENDPOINT=https://pub-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.dev
+    ```
+
+    The `pub-...r2.dev` URL is only for public file access when your bucket public development URL is enabled. You can keep it separately for reference, but this app does not require it for R2 API operations.
+
+4. **Create an .env file** in the root directory with the following content:
 
     ```bash
     PORT=3000
-    AWS_ACCESS_KEY_ID=<your-cloudflare-r2-access-key>
-    AWS_SECRET_ACCESS_KEY=<your-cloudflare-r2-secret-key>
-    R2_BUCKET_NAME=<your-cloudflare-r2-bucket-name>
-    R2_BUCKET=<your-cloudflare-r2-bucket-name>
+    AWS_ACCESS_KEY_ID=<your-r2-access-key-id>
+    AWS_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
+    R2_BUCKET_NAME=<your-r2-bucket-name>
+    R2_BUCKET=<your-r2-bucket-name>
     R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+    # Optional reference only; not used by the server code
+    R2_PUBLIC_URL=https://pub-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.dev
     ```
 
-    Replace `<your-cloudflare-r2-access-key>`, `<your-cloudflare-r2-secret-key>`, `<your-cloudflare-r2-bucket-name>`, and `<account-id>` with your Cloudflare R2 credentials.
+    Replace `<your-r2-access-key-id>`, `<your-r2-secret-access-key>`, `<your-r2-bucket-name>`, and `<account-id>` with your Cloudflare R2 values.
 
-4. **Configure R2 bucket CORS** for direct browser uploads.
+5. **Configure R2 bucket CORS** for direct browser uploads.
 
     Direct multipart uploads use presigned R2 URLs from the browser, so your bucket must allow your app origin to send `PUT` requests and read the `ETag` response header.
 
