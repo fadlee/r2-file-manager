@@ -17,7 +17,8 @@
 - **Create** JSON files and folders
 - **Read** and **update** file contents
 - **Delete** single files or multiple files in batch
-- **Upload** multiple files (up to 50 per request) with progress tracking
+- **Upload** multiple files with byte-level progress tracking
+- **Large File Uploads**: Direct browser-to-R2 multipart uploads avoid proxying large files through the server
 - **Folder Upload**: Upload entire directory structures while preserving hierarchy
 - **Batch Operations**: Delete multiple files in a single request
 
@@ -26,13 +27,13 @@
 - **Natural Sorting**: Proper alphanumeric sorting for files and folders
 - **Keyboard Shortcuts**: Full keyboard navigation support
 - **Responsive Design**: Mobile-friendly interface
-- **Progress Tracking**: Real-time upload progress with visual indicators
+- **Progress Tracking**: Real-time byte-level multipart upload progress with visual indicators
 - **Error Handling**: Comprehensive error handling with user-friendly messages
 
 ### 🌐 API Endpoints
 
 - RESTful API for all file operations
-- Pre-signed URL generation for secure file access
+- Pre-signed URL generation for secure file access and direct multipart uploads
 - Batch operations for improved performance
 - CORS support for web applications
 
@@ -69,6 +70,43 @@
 
     Replace `<your-cloudflare-r2-access-key>`, `<your-cloudflare-r2-secret-key>`, `<your-cloudflare-r2-bucket-name>`, and `<account-id>` with your Cloudflare R2 credentials.
 
+4. **Configure R2 bucket CORS** for direct browser uploads.
+
+    Direct multipart uploads use presigned R2 URLs from the browser, so your bucket must allow your app origin to send `PUT` requests and read the `ETag` response header.
+
+    For local development:
+
+    ```json
+    [
+      {
+        "AllowedOrigins": ["http://localhost:3000"],
+        "AllowedMethods": ["PUT"],
+        "AllowedHeaders": ["Content-Type"],
+        "ExposeHeaders": ["ETag"],
+        "MaxAgeSeconds": 3600
+      }
+    ]
+    ```
+
+    For production, add your deployed app URL as another allowed origin:
+
+    ```json
+    [
+      {
+        "AllowedOrigins": [
+          "http://localhost:3000",
+          "https://your-app.vercel.app"
+        ],
+        "AllowedMethods": ["PUT"],
+        "AllowedHeaders": ["Content-Type"],
+        "ExposeHeaders": ["ETag"],
+        "MaxAgeSeconds": 3600
+      }
+    ]
+    ```
+
+    `ExposeHeaders: ["ETag"]` is required because R2 returns one ETag per uploaded part, and the browser must pass those ETags back to the server to complete the multipart upload.
+
 ## Running the Server
 
 To start the server, run:
@@ -89,7 +127,7 @@ Once the server is running, visit `http://localhost:3000` in your browser to acc
 - **File Operations**: Create, upload, delete, and manage files and folders
 - **Folder Upload**: Upload entire directory structures while preserving hierarchy
 - **Batch Operations**: Delete multiple files efficiently in single requests
-- **Progress Tracking**: Real-time upload progress with visual indicators
+- **Progress Tracking**: Real-time byte-level multipart upload progress with visual indicators
 - **Responsive Design**: Works on desktop and mobile devices
 - **Keyboard Shortcuts**: Full keyboard navigation support
 
@@ -200,18 +238,113 @@ Once the server is running, visit `http://localhost:3000` in your browser to acc
 
 9. **Upload Files**
 
+The web interface uses direct browser-to-R2 multipart uploads for selected files. The legacy server-proxied upload endpoint remains available for API clients that need it.
+
 - Endpoint: `POST /upload-files`
 - Content-Type: `multipart/form-data`
 - Form Data:
-  - `files`: Multiple files (up to 50 per request, processed in batches of 10)
+  - `files`: Multiple files (up to 50 per request)
   - `folder`: Target folder name (optional, defaults to "uploads")
 - Response: `{"message": "Files uploaded successfully", "fileNames": ["file1.jpg", "file2.png"]}`
 
-10. **Get File URLs**
+10. **Direct Multipart Upload**
+
+These endpoints support large browser uploads without sending file bytes through the Express server.
+
+- Endpoint: `POST /multipart-upload/create`
+- Request Body:
+
+    ```json
+    {
+        "folder": "folder-name",
+        "fileName": "large-video.mp4",
+        "contentType": "video/mp4"
+    }
+    ```
+
+- Response:
+
+    ```json
+    {
+        "key": "folder-name/large-video.mp4",
+        "uploadId": "multipart-upload-id"
+    }
+    ```
+
+- Endpoint: `POST /multipart-upload/sign-part`
+- Request Body:
+
+    ```json
+    {
+        "key": "folder-name/large-video.mp4",
+        "uploadId": "multipart-upload-id",
+        "partNumber": 1,
+        "contentLength": 8388608
+    }
+    ```
+
+- Response:
+
+    ```json
+    {
+        "url": "https://signed-r2-upload-part-url"
+    }
+    ```
+
+- Endpoint: `POST /multipart-upload/complete`
+- Request Body:
+
+    ```json
+    {
+        "key": "folder-name/large-video.mp4",
+        "uploadId": "multipart-upload-id",
+        "parts": [
+            { "PartNumber": 1, "ETag": "etag-from-r2" }
+        ]
+    }
+    ```
+
+- Endpoint: `POST /multipart-upload/abort`
+- Request Body:
+
+    ```json
+    {
+        "key": "folder-name/large-video.mp4",
+        "uploadId": "multipart-upload-id"
+    }
+    ```
+
+11. **Get File URLs**
 
 - Endpoint: `GET /get-file-urls`
 - Query Parameters: `folder=folder-name&expires=3600` (expires is optional)
 - Returns pre-signed URLs for all files in the specified folder
+
+## Testing
+
+Run the automated tests:
+
+```bash
+npm test
+```
+
+Run syntax checks for the server and browser helpers:
+
+```bash
+node --check index.js
+node --check public/upload-client.js
+node --check public/multipart-upload-client.js
+```
+
+## Git remotes
+
+To push the current local `main` branch to a remote named `fadlee`, use:
+
+```bash
+git push fadlee main
+```
+
+The order is `git push <remote> <branch>`. For example, `git push main fadlee` tries to push a local branch named `fadlee` to a remote named `main`, which causes `src refspec fadlee does not match any` if that branch does not exist.
 
 ## Contributing
 
