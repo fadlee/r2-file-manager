@@ -41,11 +41,11 @@
 
 ### File browser
 
-![R2 File Manager file browser](docs/images/r2-file-manager-upload-progress.png)
+![R2 File Manager file browser](docs/images/r2-file-manager-browser.png)
 
 ### Upload progress
 
-![R2 File Manager multipart upload progress](docs/images/r2-file-manager-browser.png)
+![R2 File Manager multipart upload progress](docs/images/r2-file-manager-upload-progress.png)
 
 ## Prerequisites
 
